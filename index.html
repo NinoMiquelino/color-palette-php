@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrator de Paleta de Cores</title>
+    <meta name="author" content="Onivaldo Miquelino">          
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: ui-sans-serif, system-ui; }
+        .color-swatch {
+            width: 50px;
+            height: 50px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .color-swatch:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-xl">
+        <h1 class="text-3xl font-bold text-center text-indigo-700 mb-6">Extrator de Paleta de Cores</h1>
+        
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 mb-6 text-center hover:border-indigo-500 transition duration-150">
+            <input type="file" id="imageInput" accept="image/jpeg, image/png, image/gif" class="hidden">
+            <button id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition">
+                Selecionar Imagem (JPG, PNG, GIF)
+            </button>
+            <p id="fileName" class="text-sm text-gray-500 mt-3">Nenhum arquivo selecionado.</p>
+        </div>
+
+        <div id="resultArea" class="hidden space-y-6">
+            <h2 class="text-xl font-semibold text-gray-800">Imagem e Paleta Encontrada:</h2>
+
+            <div class="md:flex md:space-x-6">
+                <div class="flex-shrink-0 mb-4 md:mb-0">
+                    <img id="previewImage" class="w-full max-w-[200px] h-auto rounded-md shadow-lg mx-auto" alt="Pré-visualização da Imagem">
+                </div>
+
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-700 mb-2">Cores Dominantes:</p>
+                    <div id="paletteContainer" class="flex flex-wrap gap-3 justify-center md:justify-start">
+                        </div>
+                </div>
+            </div>
+            
+            <div class="mt-4 p-3 bg-indigo-50 rounded-md">
+                <p class="text-xs text-indigo-800">Clique em qualquer cor para copiar o código hexadecimal.</p>
+                <p class="text-sm font-mono mt-1 text-indigo-600" id="copiedHex">#AguardandoCópia</p>
+            </div>
+        </div>
+        
+        <div id="loadingStatus" class="hidden p-4 rounded-md bg-yellow-100 text-sm text-yellow-800 text-center">
+            ⏳ Processando imagem no servidor PHP...
+        </div>
+    </div>
+
+    <script>
+        // ******************************************************************************
+        // ATENÇÃO: Mude esta URL para o caminho correto do seu arquivo api.php no servidor
+        // ******************************************************************************
+        const API_URL = 'api.php'; 
+
+        const imageInput = document.getElementById('imageInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileName = document.getElementById('fileName');
+        const resultArea = document.getElementById('resultArea');
+        const previewImage = document.getElementById('previewImage');
+        const paletteContainer = document.getElementById('paletteContainer');
+        const loadingStatus = document.getElementById('loadingStatus');
+        const copiedHex = document.getElementById('copiedHex');
+
+        // Abre o diálogo de seleção de arquivo ao clicar no botão
+        uploadBtn.addEventListener('click', () => imageInput.click());
+
+        imageInput.addEventListener('change', handleFileSelect);
+
+        // --- Funções de Processamento de Arquivo ---
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                fileName.textContent = 'Nenhum arquivo selecionado.';
+                resultArea.classList.add('hidden');
+                return;
+            }
+
+            fileName.textContent = `Arquivo: ${file.name}`;
+            
+            // 1. Exibir pré-visualização no frontend
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                resultArea.classList.remove('hidden');
+                paletteContainer.innerHTML = '';
+                copiedHex.textContent = '#AguardandoCópia';
+                uploadImageToPHP(file);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 2. Enviar arquivo para o PHP (via FormData)
+        async function uploadImageToPHP(file) {
+            loadingStatus.classList.remove('hidden');
+            
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: formData // FormData é usado para uploads de arquivos
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    renderPalette(result.palette);
+                    loadingStatus.classList.add('hidden');
+                } else {
+                    throw new Error(result.error || 'Erro desconhecido no servidor.');
+                }
+            } catch (error) {
+                loadingStatus.textContent = `❌ Erro: ${error.message}`;
+                loadingStatus.classList.remove('bg-yellow-100', 'text-yellow-800');
+                loadingStatus.classList.add('bg-red-100', 'text-red-800');
+                paletteContainer.innerHTML = '';
+            }
+        }
+
+        // 3. Renderizar a paleta no frontend
+        function renderPalette(palette) {
+            paletteContainer.innerHTML = '';
+            palette.forEach(hex => {
+                const swatch = document.createElement('div');
+                swatch.className = 'color-swatch shadow-md';
+                swatch.style.backgroundColor = hex;
+                swatch.title = `Clique para copiar: ${hex}`;
+                
+                // Adiciona a funcionalidade de cópia
+                swatch.addEventListener('click', () => {
+                    navigator.clipboard.writeText(hex).then(() => {
+                        copiedHex.textContent = `${hex} COPIADO!`;
+                    }).catch(err => {
+                        console.error('Falha ao copiar:', err);
+                        copiedHex.textContent = `Falha ao copiar ${hex}`;
+                    });
+                });
+                
+                paletteContainer.appendChild(swatch);
+            });
+            
+            loadingStatus.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
